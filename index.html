@@ -595,6 +595,14 @@
     z-index: 0;
     pointer-events: none;
   }
+  /* на WebKit свечение уже внутри MP4 — второй слой выключаем */
+  html.is-webkit .home-glow { display: none; }
+  /* и маску снизу тоже: она гасила бы впечатанное свечение. Кадр там всё
+     равно ровно фоновый #FD7441, так что край клипа не виден и без неё. */
+  html.is-webkit .home-video-wrap {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
   .home-glow.angry { background: #FF4500; }
   /* Fear: Figma 402x673 layer, circle cx=201 cy=290 r=183, #FFDA96,
      feGaussianBlur stdDeviation=100 (== CSS blur(100px)). */
@@ -1720,9 +1728,29 @@
   #screen-water { isolation: isolate; }
 </style>
 
+<script>
+  /* WebKit (Safari, и любой браузер на айфоне) не умеет альфу в WebM: он
+     проигрывает цветовой слой как есть, а там остался студийный оранжевый
+     фон — он и перекрывал свечение позади котика. Поэтому там берём MP4,
+     в который свечение уже впечатано, а CSS-слой свечения выключаем, чтобы
+     оно не удвоилось. Везде остальном — WebM с настоящей прозрачностью. */
+  (function () {
+    var webkit = (navigator.vendor || '').indexOf('Apple') === 0;
+    if (webkit) document.documentElement.classList.add('is-webkit');
+    window.__pickVideoSources = function () {
+      var vids = document.querySelectorAll('video[data-webm]');
+      for (var i = 0; i < vids.length; i++) {
+        var v = vids[i];
+        var src = webkit && v.dataset.mp4 ? v.dataset.mp4 : v.dataset.webm;
+        if (v.getAttribute('src') !== src) v.setAttribute('src', src);
+      }
+    };
+  })();
+</script>
+
 <div class="device">
   <div class="cat-wrap">
-    <video id="catVideo1" class="is-visible" src="assets/cat_video_new.webm" autoplay muted playsinline loop preload="auto"></video>
+    <video id="catVideo1" class="is-visible" data-webm="assets/cat_video_new.webm" data-mp4="assets/cat_video_new.mp4" autoplay muted playsinline loop preload="auto"></video>
   </div>
 
   <div id="screen-idle" class="screen">
@@ -1825,7 +1853,7 @@
       <div class="home-mood" data-mood="calm">
         <div class="home-cat">
           <div class="home-video-wrap">
-            <video src="assets/home_video_alpha.webm" autoplay muted playsinline loop preload="auto"></video>
+            <video data-webm="assets/home_video_alpha.webm" data-mp4="assets/home_video_ios.mp4" autoplay muted playsinline loop preload="auto"></video>
           </div>
         </div>
         <div class="home-text">
@@ -1838,7 +1866,7 @@
         <div class="home-cat">
           <div class="home-glow angry" aria-hidden="true"></div>
           <div class="home-video-wrap">
-            <video src="assets/cat_angry_alpha.webm" muted playsinline loop preload="auto"></video>
+            <video data-webm="assets/cat_angry_alpha.webm" data-mp4="assets/cat_angry_ios.mp4" muted playsinline loop preload="none"></video>
           </div>
         </div>
         <div class="home-text">
@@ -1851,7 +1879,7 @@
         <div class="home-cat">
           <div class="home-glow fear" aria-hidden="true"></div>
           <div class="home-video-wrap">
-            <video src="assets/cat_fear_alpha.webm" muted playsinline loop preload="auto"></video>
+            <video data-webm="assets/cat_fear_alpha.webm" data-mp4="assets/cat_fear_ios.mp4" muted playsinline loop preload="none"></video>
           </div>
         </div>
         <div class="home-text">
@@ -2255,7 +2283,7 @@
     </div>
 
     <div class="heart-avatar-wrap">
-      <video src="assets/heart_cat_avatar.webm" autoplay muted playsinline loop preload="auto"></video>
+      <video data-webm="assets/heart_cat_avatar.webm" data-mp4="assets/heart_cat_avatar.mp4" autoplay muted playsinline loop preload="none"></video>
     </div>
 
     <div class="heart-stats-row bottom">
@@ -2495,7 +2523,7 @@
          looping video doesn't force the card to recomposite every frame.
          Card spans y 169..522, so 70px above its bottom edge puts the top at 368. -->
     <div class="water-cat">
-      <video src="assets/water_cat.webm" autoplay muted playsinline loop preload="auto"></video>
+      <video data-webm="assets/water_cat.webm" data-mp4="assets/water_cat.mp4" autoplay muted playsinline loop preload="none"></video>
     </div>
 
     <div class="water-tiles">
@@ -2689,6 +2717,8 @@
     </div>
   </div>
 </div>
+
+<script>window.__pickVideoSources();</script>
 
 <script>
   (function () {
@@ -4807,12 +4837,15 @@
     splash.addEventListener('click', function () { leave(false); });
     window.__playSplash = function () { play(false); };
     window.__leaveSplash = leave;
-    if (document.readyState === 'complete') {
-      requestAnimationFrame(function () { play(true); });
+    // Раньше здесь стоял 'load' — он ждёт, пока докачаются ВСЕ видео.
+    // На телефоне это девять мегабайт, и до тех пор экран висел без
+    // анимации и не уходил дальше. Стартуем, как только есть разметка,
+    // с подстраховкой на случай, если DOMContentLoaded уже прошёл.
+    function start() { requestAnimationFrame(function () { play(true); }); }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', start, { once: true });
     } else {
-      window.addEventListener('load', function () {
-        requestAnimationFrame(function () { play(true); });
-      });
+      start();
     }
   })();
 </script>
@@ -4845,13 +4878,28 @@
     var p = 0;            // -1..1, how far through the transition we are
     var busy = false;
 
-    // Every clip runs the whole time: the one coming forward has to be alive
-    // before it arrives, not start when it lands.
-    moods.forEach(function (m) {
-      var v = m.querySelector('video');
-      if (!v) return;
-      var q = v.play(); if (q && q.catch) q.catch(function () {});
-    });
+    // Клипы соседних настроений тяжёлые, и на телефоне тянуть их сразу при
+    // открытии страницы — значит отобрать канал у первого экрана. Поэтому
+    // будим их только когда Home реально показался: к моменту первого свайпа
+    // они уже готовы, а до тех пор не мешают.
+    function wake() {
+      moods.forEach(function (m) {
+        var v = m.querySelector('video');
+        if (!v) return;
+        if (v.preload === 'none') v.preload = 'auto';
+        var q = v.play(); if (q && q.catch) q.catch(function () {});
+      });
+    }
+    var home = document.getElementById('screen-home');
+    if (home && home.classList.contains('visible')) wake();
+    else if (home) {
+      var mo = new MutationObserver(function () {
+        if (!home.classList.contains('visible')) return;
+        mo.disconnect();
+        wake();
+      });
+      mo.observe(home, { attributes: true, attributeFilter: ['class'] });
+    }
 
     function cat(m) { return m.querySelector('.home-cat'); }
     function txt(m) { return m.querySelector('.home-text'); }
