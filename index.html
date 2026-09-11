@@ -604,8 +604,12 @@
      было видно совсем. */
   html.is-webkit .home-video-wrap {
     height: 568px;
-    -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 88%, transparent 100%);
-    mask-image: linear-gradient(to bottom, #000 0%, #000 88%, transparent 100%);
+    /* Мягко растворяем оба края кадра. Цвет фона в MP4 подобран так, чтобы
+       после декодирования совпасть с #FD7441, но в 8-битном YUV точное
+       попадание невозможно в принципе — остаётся единица-другая. На резкой
+       границе такое видно, на градиенте — нет. */
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 5%, #000 88%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 5%, #000 88%, transparent 100%);
   }
   .home-glow.angry { background: #FF4500; }
   /* Fear: Figma 402x673 layer, circle cx=201 cy=290 r=183, #FFDA96,
