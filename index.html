@@ -597,11 +597,15 @@
   }
   /* на WebKit свечение уже внутри MP4 — второй слой выключаем */
   html.is-webkit .home-glow { display: none; }
-  /* и маску снизу тоже: она гасила бы впечатанное свечение. Кадр там всё
-     равно ровно фоновый #FD7441, так что край клипа не виден и без неё. */
+  /* Маска снизу гасила бы впечатанное свечение, поэтому здесь она другая.
+     Рамку опускаем до 568px — ровно туда, где заканчивается сам кадр видео
+     после его увеличения, и где свечение уже сошло на нет. Плюс короткий
+     мягкий уход в последних 12%, чтобы остатка тёплого тона на срезе не
+     было видно совсем. */
   html.is-webkit .home-video-wrap {
-    -webkit-mask-image: none;
-    mask-image: none;
+    height: 568px;
+    -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 88%, transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 0%, #000 88%, transparent 100%);
   }
   .home-glow.angry { background: #FF4500; }
   /* Fear: Figma 402x673 layer, circle cx=201 cy=290 r=183, #FFDA96,
